@@ -249,6 +249,9 @@ struct i915_hotplug {
 	u32 short_port_mask;
 	struct work_struct dig_port_work;
 
+	struct work_struct poll_init_work;
+	bool poll_enabled;
+
 	/*
 	 * if we get a HPD irq from DP and a HPD irq from non-DP
 	 * the non-DP HPD could block the workqueue on a mode config
@@ -2150,21 +2153,19 @@ struct drm_i915_gem_object {
 	/** Record of address bit 17 of each page at last unbind. */
 	unsigned long *bit_17;
 
-	union {
-		/** for phy allocated objects */
-		struct drm_dma_handle *phys_handle;
-
-		struct i915_gem_userptr {
-			uintptr_t ptr;
-			unsigned read_only :1;
-			unsigned workers :4;
+	struct i915_gem_userptr {
+		uintptr_t ptr;
+		unsigned read_only :1;
+		unsigned workers :4;
 #define I915_GEM_USERPTR_MAX_WORKERS 15
 
-			struct i915_mm_struct *mm;
-			struct i915_mmu_object *mmu_object;
-			struct work_struct *work;
-		} userptr;
-	};
+		struct i915_mm_struct *mm;
+		struct i915_mmu_object *mmu_object;
+		struct work_struct *work;
+	} userptr;
+
+	/** for phys allocated objects */
+	struct drm_dma_handle *phys_handle;
 };
 #define to_intel_bo(x) container_of(x, struct drm_i915_gem_object, base)
 
@@ -2614,6 +2615,7 @@ struct drm_i915_cmd_table {
 #define INTEL_PCH_SPT_DEVICE_ID_TYPE		0xA100
 #define INTEL_PCH_SPT_LP_DEVICE_ID_TYPE		0x9D00
 #define INTEL_PCH_P2X_DEVICE_ID_TYPE		0x7100
+#define INTEL_PCH_QEMU_DEVICE_ID_TYPE		0x2900 /* qemu q35 has 2918 */
 
 #define INTEL_PCH_TYPE(dev) (__I915__(dev)->pch_type)
 #define HAS_PCH_SPT(dev) (INTEL_PCH_TYPE(dev) == PCH_SPT)
@@ -2706,6 +2708,8 @@ void intel_hpd_init(struct drm_i915_private *dev_priv);
 void intel_hpd_init_work(struct drm_i915_private *dev_priv);
 void intel_hpd_cancel_work(struct drm_i915_private *dev_priv);
 bool intel_hpd_pin_to_port(enum hpd_pin pin, enum port *port);
+bool intel_hpd_disable(struct drm_i915_private *dev_priv, enum hpd_pin pin);
+void intel_hpd_enable(struct drm_i915_private *dev_priv, enum hpd_pin pin);
 
 /* i915_irq.c */
 void i915_queue_hangcheck(struct drm_device *dev);
@@ -3311,6 +3315,9 @@ static inline bool intel_gmbus_is_forced_bit(struct i2c_adapter *adapter)
 	return container_of(adapter, struct intel_gmbus, adapter)->force_bit;
 }
 extern void intel_i2c_reset(struct drm_device *dev);
+
+/* intel_bios.c */
+bool intel_bios_is_port_present(struct drm_i915_private *dev_priv, enum port port);
 
 /* intel_opregion.c */
 #ifdef CONFIG_ACPI

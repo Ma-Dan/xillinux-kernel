@@ -841,8 +841,8 @@ static void fuse_fillattr(struct inode *inode, struct fuse_attr *attr,
 	stat->ino = attr->ino;
 	stat->mode = (inode->i_mode & S_IFMT) | (attr->mode & 07777);
 	stat->nlink = attr->nlink;
-	stat->uid = make_kuid(&init_user_ns, attr->uid);
-	stat->gid = make_kgid(&init_user_ns, attr->gid);
+	stat->uid = inode->i_uid;
+	stat->gid = inode->i_gid;
 	stat->rdev = inode->i_rdev;
 	stat->atime.tv_sec = attr->atime;
 	stat->atime.tv_nsec = attr->atimensec;
@@ -1015,7 +1015,7 @@ int fuse_allow_current_process(struct fuse_conn *fc)
 	const struct cred *cred;
 
 	if (fc->flags & FUSE_ALLOW_OTHER)
-		return 1;
+		return current_in_userns(fc->user_ns);
 
 	cred = current_cred();
 	if (uid_eq(cred->euid, fc->user_id) &&
@@ -1455,17 +1455,17 @@ static bool update_mtime(unsigned ivalid, bool trust_local_mtime)
 	return true;
 }
 
-static void iattr_to_fattr(struct iattr *iattr, struct fuse_setattr_in *arg,
-			   bool trust_local_cmtime)
+static void iattr_to_fattr(struct fuse_conn *fc, struct iattr *iattr,
+			   struct fuse_setattr_in *arg, bool trust_local_cmtime)
 {
 	unsigned ivalid = iattr->ia_valid;
 
 	if (ivalid & ATTR_MODE)
 		arg->valid |= FATTR_MODE,   arg->mode = iattr->ia_mode;
 	if (ivalid & ATTR_UID)
-		arg->valid |= FATTR_UID,    arg->uid = from_kuid(&init_user_ns, iattr->ia_uid);
+		arg->valid |= FATTR_UID,    arg->uid = from_kuid(fc->user_ns, iattr->ia_uid);
 	if (ivalid & ATTR_GID)
-		arg->valid |= FATTR_GID,    arg->gid = from_kgid(&init_user_ns, iattr->ia_gid);
+		arg->valid |= FATTR_GID,    arg->gid = from_kgid(fc->user_ns, iattr->ia_gid);
 	if (ivalid & ATTR_SIZE)
 		arg->valid |= FATTR_SIZE,   arg->size = iattr->ia_size;
 	if (ivalid & ATTR_ATIME) {
@@ -1625,7 +1625,7 @@ int fuse_do_setattr(struct inode *inode, struct iattr *attr,
 
 	memset(&inarg, 0, sizeof(inarg));
 	memset(&outarg, 0, sizeof(outarg));
-	iattr_to_fattr(attr, &inarg, trust_local_cmtime);
+	iattr_to_fattr(fc, attr, &inarg, trust_local_cmtime);
 	if (file) {
 		struct fuse_file *ff = file->private_data;
 		inarg.valid |= FATTR_FH;
@@ -1697,14 +1697,46 @@ error:
 static int fuse_setattr(struct dentry *entry, struct iattr *attr)
 {
 	struct inode *inode = d_inode(entry);
+	struct file *file = (attr->ia_valid & ATTR_FILE) ? attr->ia_file : NULL;
+	int ret;
 
 	if (!fuse_allow_current_process(get_fuse_conn(inode)))
 		return -EACCES;
 
-	if (attr->ia_valid & ATTR_FILE)
-		return fuse_do_setattr(inode, attr, attr->ia_file);
-	else
-		return fuse_do_setattr(inode, attr, NULL);
+	if (attr->ia_valid & (ATTR_KILL_SUID | ATTR_KILL_SGID)) {
+		int kill;
+
+		attr->ia_valid &= ~(ATTR_KILL_SUID | ATTR_KILL_SGID |
+				    ATTR_MODE);
+		/*
+		 * ia_mode calculation may have used stale i_mode.  Refresh and
+		 * recalculate.
+		 */
+		ret = fuse_do_getattr(inode, NULL, file);
+		if (ret)
+			return ret;
+
+		attr->ia_mode = inode->i_mode;
+		kill = should_remove_suid(entry);
+		if (kill & ATTR_KILL_SUID) {
+			attr->ia_valid |= ATTR_MODE;
+			attr->ia_mode &= ~S_ISUID;
+		}
+		if (kill & ATTR_KILL_SGID) {
+			attr->ia_valid |= ATTR_MODE;
+			attr->ia_mode &= ~S_ISGID;
+		}
+	}
+	if (!attr->ia_valid)
+		return 0;
+
+	ret = fuse_do_setattr(inode, attr, file);
+	if (!ret) {
+		/* Directory mode changed, may need to revalidate access */
+		if (d_is_dir(entry) && (attr->ia_valid & ATTR_MODE))
+			fuse_invalidate_entry_cache(entry);
+	}
+	return ret;
 }
 
 static int fuse_getattr(struct vfsmount *mnt, struct dentry *entry,
@@ -1797,6 +1829,23 @@ static ssize_t fuse_getxattr(struct dentry *entry, const char *name,
 	return ret;
 }
 
+static int fuse_verify_xattr_list(char *list, size_t size)
+{
+	size_t origsize = size;
+
+	while (size) {
+		size_t thislen = strnlen(list, size);
+
+		if (!thislen || thislen == size)
+			return -EIO;
+
+		size -= thislen + 1;
+		list += thislen + 1;
+	}
+
+	return origsize;
+}
+
 static ssize_t fuse_listxattr(struct dentry *entry, char *list, size_t size)
 {
 	struct inode *inode = d_inode(entry);
@@ -1832,6 +1881,8 @@ static ssize_t fuse_listxattr(struct dentry *entry, char *list, size_t size)
 	ret = fuse_simple_request(fc, &args);
 	if (!ret && !size)
 		ret = outarg.size;
+	if (ret > 0 && size)
+		ret = fuse_verify_xattr_list(list, ret);
 	if (ret == -ENOSYS) {
 		fc->no_listxattr = 1;
 		ret = -EOPNOTSUPP;

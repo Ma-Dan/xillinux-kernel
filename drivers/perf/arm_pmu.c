@@ -551,14 +551,6 @@ static void armpmu_init(struct arm_pmu *armpmu)
 	};
 }
 
-int armpmu_register(struct arm_pmu *armpmu, int type)
-{
-	armpmu_init(armpmu);
-	pr_info("enabled with %s PMU driver, %d counters available\n",
-			armpmu->name, armpmu->num_events);
-	return perf_pmu_register(&armpmu->pmu, armpmu->name, type);
-}
-
 /* Set at runtime when we know what CPU type we are. */
 static struct arm_pmu *__oprofile_cpu_pmu;
 
@@ -815,6 +807,7 @@ static int of_pmu_irq_cfg(struct arm_pmu *pmu)
 			if (i > 0 && spi != using_spi) {
 				pr_err("PPI/SPI IRQ type mismatch for %s!\n",
 					dn->name);
+				of_node_put(dn);
 				kfree(irqs);
 				return -EINVAL;
 			}
@@ -887,6 +880,8 @@ int arm_pmu_device_probe(struct platform_device *pdev,
 		return -ENOMEM;
 	}
 
+	armpmu_init(pmu);
+
 	if (!__oprofile_cpu_pmu)
 		__oprofile_cpu_pmu = pmu;
 
@@ -912,9 +907,12 @@ int arm_pmu_device_probe(struct platform_device *pdev,
 	if (ret)
 		goto out_free;
 
-	ret = armpmu_register(pmu, -1);
+	ret = perf_pmu_register(&pmu->pmu, pmu->name, -1);
 	if (ret)
 		goto out_destroy;
+
+	pr_info("enabled with %s PMU driver, %d counters available\n",
+			pmu->name, pmu->num_events);
 
 	return 0;
 

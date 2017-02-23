@@ -2,7 +2,7 @@
 #include <linux/linkage.h>
 #include <linux/bitops.h>
 #include <linux/kernel.h>
-#include <linux/module.h>
+#include <linux/export.h>
 #include <linux/percpu.h>
 #include <linux/string.h>
 #include <linux/ctype.h>
@@ -643,7 +643,10 @@ void get_cpu_cap(struct cpuinfo_x86 *c)
 			/* QoS sub-leaf, EAX=0Fh, ECX=1 */
 			cpuid_count(0x0000000F, 1, &eax, &ebx, &ecx, &edx);
 			c->x86_capability[12] = edx;
-			if (cpu_has(c, X86_FEATURE_CQM_OCCUP_LLC)) {
+
+			if ((cpu_has(c, X86_FEATURE_CQM_OCCUP_LLC)) ||
+			      ((cpu_has(c, X86_FEATURE_CQM_MBM_TOTAL)) ||
+			       (cpu_has(c, X86_FEATURE_CQM_MBM_LOCAL)))) {
 				c->x86_cache_max_rmid = ecx;
 				c->x86_cache_occ_scale = ebx;
 			}
@@ -737,21 +740,20 @@ static void __init early_identify_cpu(struct cpuinfo_x86 *c)
 		identify_cpu_without_cpuid(c);
 
 	/* cyrix could have cpuid enabled via c_identify()*/
-	if (!have_cpuid_p())
-		return;
+	if (have_cpuid_p()) {
+		cpu_detect(c);
+		get_cpu_vendor(c);
+		get_cpu_cap(c);
 
-	cpu_detect(c);
-	get_cpu_vendor(c);
-	get_cpu_cap(c);
+		if (this_cpu->c_early_init)
+			this_cpu->c_early_init(c);
 
-	if (this_cpu->c_early_init)
-		this_cpu->c_early_init(c);
+		c->cpu_index = 0;
+		filter_cpuid_features(c, false);
 
-	c->cpu_index = 0;
-	filter_cpuid_features(c, false);
-
-	if (this_cpu->c_bsp_init)
-		this_cpu->c_bsp_init(c);
+		if (this_cpu->c_bsp_init)
+			this_cpu->c_bsp_init(c);
+	}
 
 	setup_force_cpu_cap(X86_FEATURE_ALWAYS);
 	fpu__init_system(c);
@@ -980,6 +982,8 @@ static void identify_cpu(struct cpuinfo_x86 *c)
 #ifdef CONFIG_NUMA
 	numa_add_cpu(smp_processor_id());
 #endif
+	/* The boot/hotplug time assigment got cleared, restore it */
+	c->logical_proc_id = topology_phys_to_logical_pkg(c->phys_proc_id);
 }
 
 /*

@@ -223,6 +223,7 @@ static struct omap_hwmod_class_sysconfig am33xx_aes0_sysc = {
 	.sysc_offs	= 0x84,
 	.syss_offs	= 0x88,
 	.sysc_flags	= SYSS_HAS_RESET_STATUS,
+	.sysc_fields    = &omap_hwmod_sysc_type4,
 };
 
 static struct omap_hwmod_class am33xx_aes0_hwmod_class = {
@@ -1474,6 +1475,7 @@ static void omap_hwmod_am43xx_rst(void)
 {
 	RSTCTRL(am33xx_pruss_hwmod, AM43XX_RM_PER_RSTCTRL_OFFSET);
 	RSTCTRL(am33xx_gfx_hwmod, AM43XX_RM_GFX_RSTCTRL_OFFSET);
+	RSTST(am33xx_pruss_hwmod, AM43XX_RM_PER_RSTST_OFFSET);
 	RSTST(am33xx_gfx_hwmod, AM43XX_RM_GFX_RSTST_OFFSET);
 }
 

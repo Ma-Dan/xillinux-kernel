@@ -12994,7 +12994,7 @@ static const struct net_device_ops bnx2x_netdev_ops = {
 #ifdef CONFIG_NET_POLL_CONTROLLER
 	.ndo_poll_controller	= poll_bnx2x,
 #endif
-	.ndo_setup_tc		= bnx2x_setup_tc,
+	.ndo_setup_tc		= __bnx2x_setup_tc,
 #ifdef CONFIG_BNX2X_SRIOV
 	.ndo_set_vf_mac		= bnx2x_set_vf_mac,
 	.ndo_set_vf_vlan	= bnx2x_set_vf_vlan,
@@ -14819,6 +14819,10 @@ static int bnx2x_get_fc_npiv(struct net_device *dev,
 	}
 
 	offset = SHMEM2_RD(bp, fc_npiv_nvram_tbl_addr[BP_PORT(bp)]);
+	if (!offset) {
+		DP(BNX2X_MSG_MCP, "No FC-NPIV in NVRAM\n");
+		goto out;
+	}
 	DP(BNX2X_MSG_MCP, "Offset of FC-NPIV in NVRAM: %08x\n", offset);
 
 	/* Read the table contents from nvram */

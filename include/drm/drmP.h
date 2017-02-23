@@ -1029,7 +1029,8 @@ static inline int drm_debugfs_remove_files(const struct drm_info_list *files,
 #endif
 
 extern struct dma_buf *drm_gem_prime_export(struct drm_device *dev,
-		struct drm_gem_object *obj, int flags);
+					    struct drm_gem_object *obj,
+					    int flags);
 extern int drm_gem_prime_handle_to_fd(struct drm_device *dev,
 		struct drm_file *file_priv, uint32_t handle, uint32_t flags,
 		int *prime_fd);
@@ -1108,6 +1109,7 @@ static inline int drm_pci_set_busid(struct drm_device *dev,
 #define DRM_PCIE_SPEED_80 4
 
 extern int drm_pcie_get_speed_cap_mask(struct drm_device *dev, u32 *speed_mask);
+extern int drm_pcie_get_max_link_width(struct drm_device *dev, u32 *mlw);
 
 /* platform section */
 extern int drm_platform_init(struct drm_driver *driver, struct platform_device *platform_device);
@@ -1120,5 +1122,8 @@ static __inline__ bool drm_can_sleep(void)
 		return false;
 	return true;
 }
+
+/* helper for handling conditionals in various for_each macros */
+#define for_each_if(condition) if (!(condition)) {} else
 
 #endif

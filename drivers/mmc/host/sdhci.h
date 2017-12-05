@@ -427,6 +427,8 @@ struct sdhci_host {
  * SD clock frequency or enabling back the internal clock.
  */
 #define SDHCI_QUIRK2_NEED_DELAY_AFTER_INT_CLK_RST	(1<<16)
+/* There is no indication for write protection at all, assume RW */
+#define SDHCI_QUIRK2_BROKEN_WRITE_PROTECT		(1<<18)
 
 	int irq;		/* Device IRQ */
 	void __iomem *ioaddr;	/* Mapped address */

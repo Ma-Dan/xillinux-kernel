@@ -30,4 +30,14 @@ config XILLYBUS_OF
 	  Open Firmware Flattened Device Tree. If the target is an embedded
 	  system, say M.
 
+config XILLYBUS_LITE_OF
+	tristate "Xillybus Lite over Device Tree"
+	depends on OF_ADDRESS
+	depends on OF_IRQ
+	depends on UIO
+	default m
+	help
+	  Set to M to activate Xillybus Lite finding its resources from
+	  Open Firmware Flattened Device Tree.
+
 endif # if XILLYBUS

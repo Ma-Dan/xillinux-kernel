@@ -105,6 +105,69 @@ static void __init zynq_init_late(void)
 	zynq_prefetch_init();
 }
 
+static void __init poke(void)
+{
+	struct device_node *np;
+	const void *cells;
+	int size;
+	const struct {
+		u32 op; /* Zero means read, otherwise write */
+		u32 addr;
+		u32 value; /* Ignored when op == 0 */
+	} *p, *nextp;
+
+	void __iomem *base = NULL;
+	u32 phys_base, offset;
+
+	np = of_find_compatible_node(NULL, NULL, "xillybus,poke-1.0");
+
+	if (!np)
+		return;
+
+	cells = of_get_property(np, "sequence", &size);
+
+	if (!cells) {
+		pr_err("poke: No sequence found. Doing nothing.\n");
+		return;
+	}
+
+	p = cells;
+	nextp = p + 1;
+
+	for (p = cells; (void *) nextp <= (cells + size) ; p = nextp++) {
+		u32 base_candidate = be32_to_cpu(p->addr) & 0xfffff000;
+		if (!base || (base_candidate != phys_base)) {
+			if (base)
+				iounmap(base);
+
+			/* Map the whole 4kB page around the desired addr */
+			base = ioremap_nocache(base_candidate, 0x1000);
+
+			if (!base) {
+				pr_err("poke: Failed to access address %08x\n",
+				       be32_to_cpu(p->addr));
+				continue;
+			}
+			phys_base = base_candidate;
+		}
+
+		offset = be32_to_cpu(p->addr) & 0xffc;
+
+		if (be32_to_cpu(p->op)) {
+			pr_info("poke write addr=%08x: value=%08x\n",
+				phys_base + offset, be32_to_cpu(p->value));
+			writel(be32_to_cpu(p->value), base + offset);
+		} else {
+			pr_info("poke read addr=%08x: value=%08x\n",
+				phys_base + offset,
+				readl(base + offset));
+		}
+	}
+
+	if (base)
+		iounmap(base);
+}
+
 /**
  * zynq_init_machine - System specific initialization, intended to be
  *		       called from board specific initialization.
@@ -185,6 +248,7 @@ static void __init zynq_map_io(void)
 
 static void __init zynq_irq_init(void)
 {
+	poke();
 	zynq_early_slcr_init();
 	irqchip_init();
 }

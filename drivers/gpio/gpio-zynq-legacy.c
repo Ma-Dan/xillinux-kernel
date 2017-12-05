@@ -399,8 +399,7 @@ static struct irq_chip zynq_gpio_irqchip = {
 
 /**
  * zynq_gpio_irqhandler - IRQ handler for the gpio banks of a gpio device
- * @irq:	irq number of the gpio bank where interrupt has occurred
- * @desc:	irq descriptor instance of the 'irq'
+ * @desc:	irq descriptor instance of the irq
  *
  * This function reads the Interrupt Status Register of each bank to get the
  * gpio pin number which has triggered an interrupt. It then acks the triggered
@@ -408,8 +407,10 @@ static struct irq_chip zynq_gpio_irqchip = {
  * application for that pin.
  * Note: A bug is reported if no handler is set for the gpio pin.
  */
-static void zynq_gpio_irqhandler(unsigned int irq, struct irq_desc *desc)
+static void zynq_gpio_irqhandler(struct irq_desc *desc)
 {
+	unsigned int irq = irq_desc_get_irq(desc);
+
 	struct zynq_gpio *gpio = (struct zynq_gpio *)irq_get_handler_data(irq);
 	int gpio_irq = gpio->irq_base;
 	unsigned int int_sts, int_enb, bank_num;
@@ -474,7 +475,7 @@ static int zynq_gpio_resume(struct device *dev)
 }
 #endif
 
-#ifdef CONFIG_PM_RUNTIME
+#ifdef CONFIG_PM
 static int zynq_gpio_runtime_suspend(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
@@ -524,13 +525,13 @@ static void zynq_gpio_pm_runtime_init(struct platform_device *pdev)
 	pm_runtime_enable(&pdev->dev);
 }
 
-#else /* ! CONFIG_PM_RUNTIME */
+#else /* ! CONFIG_PM */
 #define zynq_gpio_request	NULL
 #define zynq_gpio_free	NULL
 static void zynq_gpio_pm_runtime_init(struct platform_device *pdev) {}
-#endif /* ! CONFIG_PM_RUNTIME */
+#endif /* ! CONFIG_PM */
 
-#if defined(CONFIG_PM_RUNTIME) || defined(CONFIG_PM_SLEEP)
+#if defined(CONFIG_PM) || defined(CONFIG_PM_SLEEP)
 static const struct dev_pm_ops zynq_gpio_dev_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(zynq_gpio_suspend, zynq_gpio_resume)
 	SET_RUNTIME_PM_OPS(zynq_gpio_runtime_suspend, zynq_gpio_runtime_resume,
@@ -538,9 +539,9 @@ static const struct dev_pm_ops zynq_gpio_dev_pm_ops = {
 };
 #define ZYNQ_GPIO_PM	(&zynq_gpio_dev_pm_ops)
 
-#else /*! CONFIG_PM_RUNTIME || ! CONFIG_PM_SLEEP */
+#else /*! CONFIG_PM || ! CONFIG_PM_SLEEP */
 #define ZYNQ_GPIO_PM	NULL
-#endif /*! CONFIG_PM_RUNTIME */
+#endif /*! CONFIG_PM */
 
 /**
  * zynq_gpio_probe - Initialization method for a zynq_gpio device
@@ -564,6 +565,9 @@ static int zynq_gpio_probe(struct platform_device *pdev)
 	gpio = devm_kzalloc(&pdev->dev, sizeof(*gpio), GFP_KERNEL);
 	if (!gpio)
 		return -ENOMEM;
+
+	dev_warn(&pdev->dev,
+		 "This is the Xillinux-1.3 compliant legacy GPIO driver.\n");
 
 	spin_lock_init(&gpio->gpio_lock);
 
@@ -642,7 +646,6 @@ static int zynq_gpio_probe(struct platform_device *pdev)
 		irq_set_chip_and_handler(gpio_irq, &zynq_gpio_irqchip,
 							handle_simple_irq);
 		irq_set_chip_data(gpio_irq, (void *)gpio);
-		set_irq_flags(gpio_irq, IRQF_VALID);
 	}
 
 	irq_set_handler_data(irq_num, (void *)gpio);

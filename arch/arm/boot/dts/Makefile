@@ -739,6 +739,7 @@ dtb-$(CONFIG_ARCH_ZYNQ) += \
 	zynq-zed.dtb \
 	zynq-zybo.dtb \
 	xillinux-microzed.dtb \
+	xillinux-zturn-lite.dtb \
 	xillinux-zedboard.dtb \
 	xillinux-zybo.dtb
 dtb-$(CONFIG_MACH_ARMADA_370) += \

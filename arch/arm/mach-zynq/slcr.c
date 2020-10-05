@@ -271,6 +271,32 @@ int __init zynq_early_slcr_init(void)
 		return -ENODEV;
 	}
 
+	#define IDCODE_REG_OFFSET 0x00000530
+	int idcode;
+
+	if (!zynq_slcr_read(&idcode, IDCODE_REG_OFFSET)) {
+		idcode >>= 12;
+		idcode &= 0x1f;
+		
+		switch (idcode) {
+		case 0x02:
+			printk("zynq device is 7z010\n");
+			break;
+
+		case 0x07:
+			printk("zynq device is 7z020\n");
+			break;
+
+		default:
+			printk("unknow zynq device code:%02x\n", idcode);
+			break;
+		}
+	} else {
+		printk("read zynq device code err\n");
+	}
+
+
+
 	/* unlock the SLCR so that registers can be changed */
 	zynq_slcr_unlock();
 

@@ -740,7 +740,8 @@ dtb-$(CONFIG_ARCH_ZYNQ) += \
 	zynq-zybo.dtb \
 	xillinux-microzed.dtb \
 	xillinux-zedboard.dtb \
-	xillinux-zybo.dtb
+	xillinux-zybo.dtb \
+	zynq-zturn.dtb
 dtb-$(CONFIG_MACH_ARMADA_370) += \
 	armada-370-db.dtb \
 	armada-370-dlink-dns327l.dtb \
